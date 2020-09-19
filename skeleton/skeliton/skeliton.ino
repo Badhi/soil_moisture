@@ -2,16 +2,16 @@
 
 #define HOLD_COUNT 100
 
-//#define COM
+#define COM
 
 #define EEPROM_SOIL_MOISTURE_LOW_ADDR 0
 #define EEPROM_SOIL_MOISTURE_HIGH_ADDR 1
-//#define TEST
+#define TEST
 
 #ifdef COM
 #define SEND(message) \
 {\
-  Serial.println(message); \
+  Serial.print(message); \
 }
 #else
 #define SEND(message)
@@ -22,14 +22,15 @@
   sprintf(printBuff, __VA_ARGS__);\
   SEND(printBuff)\
 }
-const int motor0 = 8;
-const int fan0 = 9;
+const int motor0 = 9;
+const int fan0 = 8;
 bool motor0High = false;
 bool fan0High = false;
 
 const int pushButton = 13;
 
-int soilMoistureA0 = 0;
+int soilInputPins[] = {A0, A1, A2, A3};
+
 char printBuff[100] ;
 
 int soilMoistureLowVal = 341;
@@ -38,21 +39,36 @@ int soilMoistureHighVal = 587;
 int soilMoisture0_pumpThreshold = 60;
 int soilMoisture0_fanThreshold = 40;
 
+inline int readInputs()
+{
+  int values = 0;
+  int inputCount = sizeof(soilInputPins)/sizeof(int);
+  
+  for(int i = 0; i < inputCount; ++i)
+  {
+    int val = analogRead(soilInputPins[i]);
+    FSEND("A%d : %d ", i, val); 
+    values += val;
+  }
+  FSEND("\n");
+  return values/inputCount;
+}
+
 #ifndef TEST
 inline bool waterThresholdReached(float value){
   int ratio = 100 * ((value - soilMoistureLowVal)/(soilMoistureHighVal - soilMoistureLowVal));
-  FSEND("Water : Ratio : %d, thresh : %d", (int) ratio, (int) (soilMoisture0_pumpThreshold));
+  //FSEND("Water : Ratio : %d, thresh : %d\n", (int) ratio, (int) (soilMoisture0_pumpThreshold));
   return ratio > soilMoisture0_pumpThreshold ;
 }
 #else
 inline bool waterThresholdReached(float value){
-  return (value > 550) ? true : false; 
+  return (value > 1000) ? true : false; 
 }
 #endif
 
 inline bool fanThresholdReached(float value){
   int ratio = 100 * ((value - soilMoistureLowVal)/(soilMoistureHighVal - soilMoistureLowVal));
-  FSEND("Fan : Ratio : %d, thresh : %d", (int) ratio, (int) (soilMoisture0_fanThreshold));
+  //FSEND("Fan : Ratio : %d, thresh : %d\n", (int) ratio, (int) (soilMoisture0_fanThreshold));
   return ratio < soilMoisture0_fanThreshold ;
 }
 
@@ -107,12 +123,12 @@ void calibrateMoistureSensor()
   SEND("Calibrating Moisture Sensor");
 
   SEND("Put the sensor to the highest moisture level and press button");
-  soilMoistureHighVal = getValueOnPressButton(pushButton, A0);
-  FSEND("Calibration done, High = %d", soilMoistureHighVal);
+  soilMoistureHighVal = getValueOnPressButton(pushButton, soilInputPins[0]);
+  FSEND("Calibration done, High = %d\n", soilMoistureHighVal);
   
   SEND("Put the sensor to the lowest moisture and press button");
-  soilMoistureLowVal = getValueOnPressButton(pushButton, A0);
-  FSEND("Calibration done, Low = %d", soilMoistureLowVal);
+  soilMoistureLowVal = getValueOnPressButton(pushButton, soilInputPins[0]);
+  FSEND("Calibration done, Low = %d\n", soilMoistureLowVal);
 
   SEND("Updating the ROM");
   writeEEPROM(EEPROM_SOIL_MOISTURE_LOW_ADDR, soilMoistureLowVal);
@@ -136,15 +152,15 @@ void setup()
   pinMode(motor0, OUTPUT);
   pinMode(fan0, OUTPUT);
   digitalWrite(motor0, LOW);
-  digitalWrite(fan0, LOW);
+  digitalWrite(fan0, HIGH);
   
   pinMode(pushButton, INPUT);
 
   soilMoistureLowVal = readEEPROM(EEPROM_SOIL_MOISTURE_LOW_ADDR);
   soilMoistureHighVal = readEEPROM(EEPROM_SOIL_MOISTURE_HIGH_ADDR);
 
-  FSEND("EEPROM Read Moisture High : %d, Moisture Low : %d", soilMoistureLowVal, soilMoistureHighVal);
-  SEND("Setup completed");
+  //FSEND("EEPROM Read Moisture High : %d, Moisture Low : %d\n", soilMoistureLowVal, soilMoistureHighVal);
+  //SEND("Setup completed");
 }
 
 void checkForPump(int sensorValue){
@@ -181,6 +197,7 @@ void checkForFan(int sensorValue){
   }    
 }
 
+int inputValue = 0;
 void loop() // run over and over
 {
 #ifdef COM
@@ -190,12 +207,12 @@ void loop() // run over and over
   }
 #endif
     
-  soilMoistureA0 = analogRead(A0);
+  inputValue = readInputs();
 
-  FSEND("Moisture Read Value on A0 : %d", soilMoistureA0);
+  //FSEND("Moisture Read Value on A0 : %d\n", inputValue);
   
-  checkForPump(soilMoistureA0);
-  checkForFan(soilMoistureA0);
+  checkForPump(inputValue);
+  //checkForFan(soilMoistureA0);
   
   delay(100);
 }
