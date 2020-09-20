@@ -2,7 +2,7 @@
 
 #define HOLD_COUNT 100
 
-#define COM
+//#define COM
 
 #define TEST
 
@@ -22,6 +22,7 @@
 }
 
 const unsigned long long LED_BLINK_PERIOD = 5;
+const unsigned long long  FUNC_LED_BLINK_PERIOD = 5;
 
 const int motor0 = 9;
 const int fan0 = 8;
@@ -126,15 +127,23 @@ void getValueOnPressButton(int pButton, const int* readPin, int pinC, int* outVa
   }
 }
 
-void calibrateMoistureSensor()
+void blinkFastTwice()
 {
   digitalWrite(ledPort, HIGH);
-  delay(1000);
+  delay(500);
   digitalWrite(ledPort, LOW);
   delay(1000);
+  digitalWrite(ledPort, HIGH);
+  delay(500);
+  digitalWrite(ledPort, LOW);
+  delay(1000);
+}
+
+void calibrateMoistureSensor()
+{
+  blinkFastTwice();
   
   SEND("Calibrating Moisture Sensor\n");
-
 
   digitalWrite(ledPort, HIGH);
   FSEND("Put all sensor to the highest moisture level and press button\n");
@@ -147,7 +156,8 @@ void calibrateMoistureSensor()
     SEND("Updating the ROM\n");
     //writeEEPROM(EEPROM_SOIL_MOISTURE_HIGH_ADDR[s], soilMoistureHighVal[s]);
   }
-
+  
+  delay(500);
   digitalWrite(ledPort, HIGH);
   FSEND("Put the sensors to the lowest moisture and press button\n");
   getValueOnPressButton(pushButton, soilInputPins, inputCount, soilMoistureLowVal);
@@ -243,15 +253,31 @@ void checkForFan(int sensorValue){
   }    
 }
 
+bool  operationalLED(unsigned long long cVal )
+{
+  if(cVal == FUNC_LED_BLINK_PERIOD)
+  {
+    digitalWrite(ledPort, HIGH);
+    return false;
+  }
+  else if ( cVal == 3*FUNC_LED_BLINK_PERIOD)
+  { 
+    digitalWrite(ledPort, LOW);
+    return true;
+  }
+  return false;
+}
+
 int inputValue = 0;
+unsigned long long cVal = 0;
 void loop() // run over and over
 {
-#ifdef COM
+  if(operationalLED(cVal)) { cVal = 0; } else { ++cVal; }
+    
   if(checkPressed(pushButton)){
     SEND("Calibrating\n");
     calibrateMoistureSensor();
   }
-#endif
     
   inputValue = readInputs();
 
