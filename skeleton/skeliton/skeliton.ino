@@ -4,8 +4,6 @@
 
 #define COM
 
-#define EEPROM_SOIL_MOISTURE_LOW_ADDR 0
-#define EEPROM_SOIL_MOISTURE_HIGH_ADDR 1
 #define TEST
 
 #ifdef COM
@@ -29,12 +27,18 @@ bool fan0High = false;
 
 const int pushButton = 13;
 
-int soilInputPins[] = {A0, A1, A2, A3};
+const int soilInputPins[] = {A0, A1, A2, A3};
+const int refOffsets [] = { 0, 300, 0, 0};
+
+const int EEPROM_SOIL_MOISTURE_LOW_ADDR[] = {0, 1, 2, 3};
+const int EEPROM_SOIL_MOISTURE_HIGH_ADDR[] = { 4, 5, 6, 7};
+
+int soilMoistureLowVal [] = {341, 341, 341, 341};
+int soilMoistureHighVal [] = {587, 587, 587, 587};
+
+const int inputCount = sizeof(soilInputPins)/sizeof(int);
 
 char printBuff[100] ;
-
-int soilMoistureLowVal = 341;
-int soilMoistureHighVal = 587;
 
 int soilMoisture0_pumpThreshold = 60;
 int soilMoisture0_fanThreshold = 40;
@@ -42,23 +46,23 @@ int soilMoisture0_fanThreshold = 40;
 inline int readInputs()
 {
   int values = 0;
-  int inputCount = sizeof(soilInputPins)/sizeof(int);
   
   for(int i = 0; i < inputCount; ++i)
   {
-    int val = analogRead(soilInputPins[i]);
+    int analogVal = analogRead(soilInputPins[i]);
+    int val = 100 * ((double) ( analogVal - soilMoistureLowVal[i])/(soilMoistureHighVal[i] - soilMoistureLowVal[i]));
     FSEND("A%d : %d ", i, val); 
     values += val;
   }
+  FSEND("avg : %d", values/inputCount);
   FSEND("\n");
   return values/inputCount;
 }
 
 #ifndef TEST
 inline bool waterThresholdReached(float value){
-  int ratio = 100 * ((value - soilMoistureLowVal)/(soilMoistureHighVal - soilMoistureLowVal));
-  //FSEND("Water : Ratio : %d, thresh : %d\n", (int) ratio, (int) (soilMoisture0_pumpThreshold));
-  return ratio > soilMoisture0_pumpThreshold ;
+  FSEND("Water : Ratio : %d, thresh : %d\n", (int) value, (int) (soilMoisture0_pumpThreshold));
+  return value > soilMoisture0_pumpThreshold ;
 }
 #else
 inline bool waterThresholdReached(float value){
@@ -67,9 +71,9 @@ inline bool waterThresholdReached(float value){
 #endif
 
 inline bool fanThresholdReached(float value){
-  int ratio = 100 * ((value - soilMoistureLowVal)/(soilMoistureHighVal - soilMoistureLowVal));
+  //int ratio = 100 * ((value - soilMoistureLowVal[inputId])/(soilMoistureHighVal[inputId] - soilMoistureLowVal[inputId]));
   //FSEND("Fan : Ratio : %d, thresh : %d\n", (int) ratio, (int) (soilMoisture0_fanThreshold));
-  return ratio < soilMoisture0_fanThreshold ;
+  return value < soilMoisture0_fanThreshold ;
 }
 
 inline int readEEPROM(int address32){
@@ -96,9 +100,8 @@ bool checkPressed(const int pin)
   return false;
 }
 
-int getValueOnPressButton(int pButton, int readPin)
+void getValueOnPressButton(int pButton, const int* readPin, int pinC, int* outVals)
 {
-  int sensorVal = 0;
   long holdTime = 0;
   
   bool highDetected = false;
@@ -109,31 +112,42 @@ int getValueOnPressButton(int pButton, int readPin)
     if(holdTime > 0) highDetected = true;
     
     if(val){
-      sensorVal = analogRead(readPin);
+      for(int i =0; i < pinC; i++)
+      {
+        outVals[i] = analogRead(readPin[i]);
+      }
     }
 
     if(highDetected && holdTime == 0) break;
   }
-  return sensorVal;
 }
 
 void calibrateMoistureSensor()
 {
   delay(2000);
-  SEND("Calibrating Moisture Sensor");
+  SEND("Calibrating Moisture Sensor\n");
 
-  SEND("Put the sensor to the highest moisture level and press button");
-  soilMoistureHighVal = getValueOnPressButton(pushButton, soilInputPins[0]);
-  FSEND("Calibration done, High = %d\n", soilMoistureHighVal);
+  FSEND("Put all sensor to the highest moisture level and press button\n");
+ 
+  getValueOnPressButton(pushButton, soilInputPins, inputCount, soilMoistureHighVal);
   
-  SEND("Put the sensor to the lowest moisture and press button");
-  soilMoistureLowVal = getValueOnPressButton(pushButton, soilInputPins[0]);
-  FSEND("Calibration done, Low = %d\n", soilMoistureLowVal);
+  for(int s = 0; s < inputCount; ++s)
+  {
+    FSEND("Calibration done, %d :  High = %d\n", s, soilMoistureHighVal[s]);
+    SEND("Updating the ROM\n");
+    //writeEEPROM(EEPROM_SOIL_MOISTURE_HIGH_ADDR[s], soilMoistureHighVal[s]);
+  }
 
-  SEND("Updating the ROM");
-  writeEEPROM(EEPROM_SOIL_MOISTURE_LOW_ADDR, soilMoistureLowVal);
-  writeEEPROM(EEPROM_SOIL_MOISTURE_HIGH_ADDR, soilMoistureHighVal);
-
+  FSEND("Put the sensors to the lowest moisture and press button\n");
+  getValueOnPressButton(pushButton, soilInputPins, inputCount, soilMoistureLowVal);
+  
+  for(int s = 0; s < inputCount; ++s)
+  {
+    FSEND("Calibration done, %d : Low = %d\n", s, soilMoistureLowVal[s]);
+    SEND("Updating the ROM\n");
+    //writeEEPROM(EEPROM_SOIL_MOISTURE_LOW_ADDR[0], soilMoistureLowVal[s]);
+  }
+  
   SEND("Press button to proceed");
   while(!checkPressed(pushButton));
 }
@@ -156,10 +170,12 @@ void setup()
   
   pinMode(pushButton, INPUT);
 
-  soilMoistureLowVal = readEEPROM(EEPROM_SOIL_MOISTURE_LOW_ADDR);
-  soilMoistureHighVal = readEEPROM(EEPROM_SOIL_MOISTURE_HIGH_ADDR);
-
-  //FSEND("EEPROM Read Moisture High : %d, Moisture Low : %d\n", soilMoistureLowVal, soilMoistureHighVal);
+  for(int s = 0; s < inputCount; s++)
+  {
+    soilMoistureLowVal[s] = readEEPROM(EEPROM_SOIL_MOISTURE_LOW_ADDR[s]);
+    soilMoistureHighVal[s] = readEEPROM(EEPROM_SOIL_MOISTURE_HIGH_ADDR[s]);
+    //FSEND("EEPROM Read Moisture High : %d, Moisture Low : %d\n", soilMoistureLowVal[s], soilMoistureHighVal[s]);
+  }
   //SEND("Setup completed");
 }
 
@@ -202,7 +218,7 @@ void loop() // run over and over
 {
 #ifdef COM
   if(checkPressed(pushButton)){
-    SEND("Calibrating");
+    SEND("Calibrating\n");
     calibrateMoistureSensor();
   }
 #endif
