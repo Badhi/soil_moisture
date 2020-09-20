@@ -2,9 +2,9 @@
 
 #define HOLD_COUNT 100
 
-//#define COM
+#define COM
 
-#define TEST
+//#define TEST
 
 #ifdef COM
 #define SEND(message) \
@@ -146,29 +146,30 @@ void calibrateMoistureSensor()
   SEND("Calibrating Moisture Sensor\n");
 
   digitalWrite(ledPort, HIGH);
-  FSEND("Put all sensor to the highest moisture level and press button\n");
+  FSEND("Put all sensor to the lowest moisture level and press button\n");
   getValueOnPressButton(pushButton, soilInputPins, inputCount, soilMoistureHighVal);
-  digitalWrite(ledPort, LOW);
-  
-  for(int s = 0; s < inputCount; ++s)
-  {
-    FSEND("Calibration done, %d :  High = %d\n", s, soilMoistureHighVal[s]);
-    SEND("Updating the ROM\n");
-    //writeEEPROM(EEPROM_SOIL_MOISTURE_HIGH_ADDR[s], soilMoistureHighVal[s]);
-  }
-  
-  delay(500);
-  digitalWrite(ledPort, HIGH);
-  FSEND("Put the sensors to the lowest moisture and press button\n");
-  getValueOnPressButton(pushButton, soilInputPins, inputCount, soilMoistureLowVal);
   digitalWrite(ledPort, LOW);
   
   for(int s = 0; s < inputCount; ++s)
   {
     FSEND("Calibration done, %d : Low = %d\n", s, soilMoistureLowVal[s]);
     SEND("Updating the ROM\n");
-    //writeEEPROM(EEPROM_SOIL_MOISTURE_LOW_ADDR[0], soilMoistureLowVal[s]);
+    writeEEPROM(EEPROM_SOIL_MOISTURE_LOW_ADDR[s], soilMoistureLowVal[s]);
   }
+  
+  delay(500);
+  digitalWrite(ledPort, HIGH);
+  FSEND("Put the sensors to the highest moisture and press button\n");
+  getValueOnPressButton(pushButton, soilInputPins, inputCount, soilMoistureLowVal);
+  digitalWrite(ledPort, LOW);
+
+  for(int s = 0; s < inputCount; ++s)
+  {
+    FSEND("Calibration done, %d :  High = %d\n", s, soilMoistureHighVal[s]);
+    SEND("Updating the ROM\n");
+    writeEEPROM(EEPROM_SOIL_MOISTURE_HIGH_ADDR[s], soilMoistureHighVal[s]);
+  }
+  
   
   SEND("Press button to proceed");
   unsigned long long ledBlinkCounter = 0;
@@ -214,24 +215,24 @@ void setup()
   {
     soilMoistureLowVal[s] = readEEPROM(EEPROM_SOIL_MOISTURE_LOW_ADDR[s]);
     soilMoistureHighVal[s] = readEEPROM(EEPROM_SOIL_MOISTURE_HIGH_ADDR[s]);
-    //FSEND("EEPROM Read Moisture High : %d, Moisture Low : %d\n", soilMoistureLowVal[s], soilMoistureHighVal[s]);
+    FSEND("EEPROM Read Moisture High : %d, Moisture Low : %d\n", soilMoistureLowVal[s], soilMoistureHighVal[s]);
   }
   //SEND("Setup completed");
 }
 
 void checkForPump(int sensorValue){
   if(waterThresholdReached(sensorValue)){
+     if(motor0High){
+      motor0High = false;
+      SEND("Setting the Motor 0 to low");
+      digitalWrite(motor0, LOW);
+    }
+  }
+  else{
     if(!motor0High){
       motor0High = true;
       SEND("Setting the Motor 0 to high");
       digitalWrite(motor0, HIGH);
-    }
-  }
-  else{
-    if(motor0High){
-      motor0High = false;
-      SEND("Setting the Motor 0 to low");
-      digitalWrite(motor0, LOW);
     }
   }  
 }
@@ -281,8 +282,6 @@ void loop() // run over and over
     
   inputValue = readInputs();
 
-  //FSEND("Moisture Read Value on A0 : %d\n", inputValue);
-  
   checkForPump(inputValue);
   //checkForFan(soilMoistureA0);
   
