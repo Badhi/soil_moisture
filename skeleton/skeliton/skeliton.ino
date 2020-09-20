@@ -20,12 +20,16 @@
   sprintf(printBuff, __VA_ARGS__);\
   SEND(printBuff)\
 }
+
+const unsigned long long LED_BLINK_PERIOD = 5;
+
 const int motor0 = 9;
 const int fan0 = 8;
 bool motor0High = false;
 bool fan0High = false;
 
-const int pushButton = 13;
+const int pushButton = 12;
+const int ledPort = 13;
 
 const int soilInputPins[] = {A0, A1, A2, A3};
 const int refOffsets [] = { 0, 300, 0, 0};
@@ -124,12 +128,18 @@ void getValueOnPressButton(int pButton, const int* readPin, int pinC, int* outVa
 
 void calibrateMoistureSensor()
 {
-  delay(2000);
+  digitalWrite(ledPort, HIGH);
+  delay(1000);
+  digitalWrite(ledPort, LOW);
+  delay(1000);
+  
   SEND("Calibrating Moisture Sensor\n");
 
+
+  digitalWrite(ledPort, HIGH);
   FSEND("Put all sensor to the highest moisture level and press button\n");
- 
   getValueOnPressButton(pushButton, soilInputPins, inputCount, soilMoistureHighVal);
+  digitalWrite(ledPort, LOW);
   
   for(int s = 0; s < inputCount; ++s)
   {
@@ -138,8 +148,10 @@ void calibrateMoistureSensor()
     //writeEEPROM(EEPROM_SOIL_MOISTURE_HIGH_ADDR[s], soilMoistureHighVal[s]);
   }
 
+  digitalWrite(ledPort, HIGH);
   FSEND("Put the sensors to the lowest moisture and press button\n");
   getValueOnPressButton(pushButton, soilInputPins, inputCount, soilMoistureLowVal);
+  digitalWrite(ledPort, LOW);
   
   for(int s = 0; s < inputCount; ++s)
   {
@@ -149,7 +161,24 @@ void calibrateMoistureSensor()
   }
   
   SEND("Press button to proceed");
-  while(!checkPressed(pushButton));
+  unsigned long long ledBlinkCounter = 0;
+  
+  digitalWrite(ledPort, HIGH);
+  while(!checkPressed(pushButton))
+  {
+    ++ledBlinkCounter;
+    if(ledBlinkCounter == LED_BLINK_PERIOD)
+    {
+      digitalWrite(ledPort, LOW);
+    }
+    else if(ledBlinkCounter == 2 * LED_BLINK_PERIOD)
+    {
+      digitalWrite(ledPort, HIGH);
+      ledBlinkCounter = 0;
+    }
+  }
+
+   digitalWrite(ledPort, LOW);
 }
 
 void setup()
@@ -169,6 +198,7 @@ void setup()
   digitalWrite(fan0, HIGH);
   
   pinMode(pushButton, INPUT);
+  pinMode(ledPort, OUTPUT);
 
   for(int s = 0; s < inputCount; s++)
   {
