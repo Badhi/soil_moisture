@@ -48,6 +48,31 @@ char printBuff[100] ;
 int soilMoisture0_pumpThreshold = 60;
 int soilMoisture0_fanThreshold = 40;
 
+
+const int fuzzyLow = -3;
+const int fuzzyHigh = 4;
+bool currentHigh = false;
+
+bool fuzzyCheckOn(int value, int thresh)
+{
+  if(currentHigh){
+    if(value < (fuzzyLow + thresh)) {
+      currentHigh = false;
+      return false;
+    }
+    return true;
+  }
+  else {
+    if(value > (fuzzyHigh + thresh)){
+      currentHigh = true;
+      return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+
 inline int readInputs()
 {
   int values = 0;
@@ -67,7 +92,7 @@ inline int readInputs()
 #ifndef TEST
 inline bool waterThresholdReached(float value){
   FSEND("Water : Ratio : %d, thresh : %d\n", (int) value, (int) (soilMoisture0_pumpThreshold));
-  return value > soilMoisture0_pumpThreshold ;
+  return fuzzyCheckOn(value, soilMoisture0_pumpThreshold);
 }
 #else
 inline bool waterThresholdReached(float value){
@@ -268,6 +293,7 @@ bool  operationalLED(unsigned long long cVal )
   }
   return false;
 }
+
 
 int inputValue = 0;
 unsigned long long cVal = 0;
